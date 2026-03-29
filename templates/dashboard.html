@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Mode Test{% endblock %}
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <!-- Header Card -->
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-white border-0 pt-4">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-circle bg-primary bg-opacity-10 p-3 me-3">
+                            <i class="fas fa-chalkboard-user fa-2x text-primary"></i>
+                        </div>
+                        <div>
+                            <h3 class="mb-0 fw-bold">Dashboard - Mode Test</h3>
+                            <p class="text-muted mt-1 mb-0">Testez le modèle sur le dataset CIFAR-10</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Classes Section -->
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-white border-0 pt-4">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-circle bg-success bg-opacity-10 p-2 me-3">
+                            <i class="fas fa-tags text-success"></i>
+                        </div>
+                        <h4 class="mb-0">Classes disponibles</h4>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        {% for class_name in class_names %}
+                        <div class="col-lg-2 col-md-3 col-4">
+                            <div class="card text-center hover-card border-0 shadow-sm">
+                                <div class="card-body py-3">
+                                    <div class="display-5">{{ class_info[class_name]['icon'] }}</div>
+                                    <p class="mb-0 mt-2 fw-bold text-capitalize">{{ class_name }}</p>
+                                    <small class="text-muted">{{ class_info[class_name]['description'] }}</small>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Batch Test Card -->
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header bg-white border-0 pt-4">
+                    <div class="d-flex align-items-center">
+                        <div class="rounded-circle bg-primary bg-opacity-10 p-2 me-3">
+                            <i class="fas fa-chart-simple text-primary"></i>
+                        </div>
+                        <h4 class="mb-0">Test batch</h4>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-12 mb-4">
+                            <button class="btn btn-primary btn-lg" id="batchTestBtn">
+                                <i class="fas fa-play me-2"></i>Lancer le test batch (10 images aléatoires)
+                            </button>
+                        </div>
+                        <div class="col-12">
+                            <div id="batchResultsCard" style="display: none;">
+                                <div id="batchResults"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.hover-card {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+.hover-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+}
+</style>
+
+<script>
+// Batch test
+async function batchTest() {
+    const card = document.getElementById('batchResultsCard');
+    const resultsDiv = document.getElementById('batchResults');
+    card.style.display = 'block';
+    resultsDiv.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" style="width: 2rem; height: 2rem;"></div>
+            <p class="mt-2 text-muted">Test de 10 images aléatoires...</p>
+        </div>
+    `;
+    
+    const indices = Array.from({length: 10}, () => Math.floor(Math.random() * 10000));
+    
+    try {
+        const res = await fetch('/test/batch', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({indices: indices})
+        });
+        const data = await res.json();
+        
+        if (data.error) {
+            resultsDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+            return;
+        }
+        
+        const accuracyClass = data.accuracy >= 70 ? 'success' : 'warning';
+        
+        resultsDiv.innerHTML = `
+            <div class="alert alert-${accuracyClass} mb-4">
+                <i class="fas fa-chart-line me-2"></i>
+                <strong>Précision: ${data.accuracy.toFixed(1)}%</strong>
+                <span class="ms-2">(${data.correct} correctes sur ${data.total} images)</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th><i class="fas fa-hashtag"></i> Index</th>
+                            <th><i class="fas fa-tag"></i> Vérité</th>
+                            <th><i class="fas fa-robot"></i> Prédiction</th>
+                            <th><i class="fas fa-chart-line"></i> Confiance</th>
+                            <th><i class="fas fa-check-circle"></i> Résultat</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.results.map(r => `
+                            <tr class="${r.is_correct ? 'table-success' : 'table-danger'}">
+                                <td><strong>${r.index}</strong></td>
+                                <td><span class="badge bg-secondary text-capitalize">${r.true_class}</span></td>
+                                <td><span class="badge bg-primary text-capitalize">${r.predicted_class}</span></td>
+                                <td>${(r.confidence*100).toFixed(1)}%</td>
+                                <td>${r.is_correct ? '<i class="fas fa-check-circle text-success"></i>' : '<i class="fas fa-times-circle text-danger"></i>'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        resultsDiv.scrollIntoView({ behavior: 'smooth' });
+    } catch(e) {
+        resultsDiv.innerHTML = `<div class="alert alert-danger">Erreur: ${e.message}</div>`;
+    }
+}
+
+// Attachement des événements
+document.getElementById('batchTestBtn')?.addEventListener('click', batchTest);
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Dashboard page loaded');
+});
+</script>
+{% endblock %}
